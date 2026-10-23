@@ -30,7 +30,7 @@ except Exception:
     EMAIL_MITTENTE = "CISOM Grosseto <notifiche@cisom-grosseto.it>"
 
 def invia_email_notifica(destinatario, oggetto, corpo_html):
-    """Spedizione e-mail formale con template SMOM e diagnostica."""
+    """Spedizione e-mail formale con template SMOM e diagnostica trasparente."""
     destinatario = str(destinatario).strip()
     if not destinatario or "@" not in destinatario:
         return False, "Indirizzo e-mail non valido o assente."
@@ -249,7 +249,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- ARCHITETTURA GERARCHICA SMOM / CISOM ---
+# --- ARCHITETTURA GERARCHICA SMOM / CISOM (4 MACROAREE DISTINTE) ---
 STRUTTURA_ISTITUZIONALE_SMOM_CISOM = {
     "1. Componente Sacerdotale & Assistenza Spirituale": [
         "Cardinale Patrono / Prelato dell'Ordine",
@@ -732,14 +732,12 @@ elif ruolo_accesso == "Bacheca Volontario":
                     
                     if not adesioni.empty:
                         mia_ad = adesioni.iloc[0]
-                        st.success(f"✅ La tua disponibilità per questa missione è confermata a registro. Grazie. Modalità: **{mia_ad['modalita']}** ({mia_ad['ore_effettive']}h)")
+                        st.success(f"✅ La tua disponibilità per questa missione è confermata a registro. Modalità: **{mia_ad['modalita']}** ({mia_ad['ore_effettive']}h)")
                         
                         if st.button("❌ Revoca / Cancella la mia disponibilità", key=f"del_ad_{serv['id']}_{utente_id}"):
-                            # Eliminazione della sola disponibilità
                             run_query("DELETE FROM adesioni WHERE servizio_id = ? AND volontario_id = ?", 
                                       (int(serv["id"]), int(utente_id)), fetch=False)
                             
-                            # Invio Notifica Email Revoca Turno con Stemma SMOM
                             if utente_email and "@" in str(utente_email):
                                 corpo_revoca = f"""
                                 <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
@@ -808,7 +806,6 @@ elif ruolo_accesso == "Bacheca Volontario":
                                 VALUES (?, ?, 'Confermato', ?, ?, ?, '', ?)
                             """, (int(serv["id"]), int(utente_id), mod_salvata, h_ini_scelta, h_fine_scelta, ore_da_registrare), fetch=False)
                             
-                            # Invio Notifica Email Memo Turno con Stemma SMOM
                             if utente_email and "@" in str(utente_email):
                                 corpo_mail = f"""
                                 <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
@@ -980,6 +977,42 @@ elif ruolo_accesso == "Configurazione & Gestione":
                     dt_v = s_row['data']
                     
                 with st.expander(f"📅 {dt_v} — {s_row['titolo']} ({s_row['luogo']})"):
+                    # Funzione ausiliaria per notificare tutti i volontari iscritti
+                    def notifica_squadra_annullamento(serv_id, titolo_ev, data_ev, motivo_testo):
+                        iscritti = run_query("""
+                            SELECT v.nome, v.email 
+                            FROM adesioni a 
+                            JOIN volontari v ON a.volontario_id = v.id 
+                            WHERE a.servizio_id = ?
+                        """, (int(serv_id),))
+                        
+                        if not iscritti.empty:
+                            for _, iscr in iscritti.iterrows():
+                                e_mail = iscr['email']
+                                n_ome = iscr['nome']
+                                if e_mail and "@" in str(e_mail):
+                                    corpo_annullo = f"""
+                                    <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
+                                        <div style="text-align: center; border-bottom: 2px solid #ef4444; padding-bottom: 14px; margin-bottom: 18px;">
+                                            <div style="font-size: 26px; line-height: 1; color: #ef4444;">✠</div>
+                                            <div style="font-size: 15px; font-weight: 800; color: #ef4444; letter-spacing: 2px; text-transform: uppercase; margin-top: 5px;">SOVRANO MILITARE ORDINE DI MALTA</div>
+                                            <div style="font-size: 12px; font-weight: 600; color: #94a3b8; letter-spacing: 1px;">CORPO ITALIANO DI SOCCORSO DELL'ORDINE DI MALTA</div>
+                                            <div style="font-size: 11px; font-weight: 700; color: #ef4444; margin-top: 3px;">NOTIFICA UFFICIALE: MISSIONE ANNULLATA / SOSPESA</div>
+                                        </div>
+                                        <p style="font-size: 14px;">Gentile <strong>{n_ome}</strong>,</p>
+                                        <p style="font-size: 13px; color: #cbd5e1;">Si comunica che il servizio operativo <strong>{titolo_ev}</strong> programmato per il giorno <strong>{data_ev}</strong> è stato <strong>ANNULLATO DALLA SEGRETERIA OPERATIVA</strong>.</p>
+                                        <div style="background-color: #111827; border-left: 4px solid #ef4444; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+                                            <strong style="color: #f87171;">MOTIVAZIONE UFFICIALE:</strong><br>
+                                            <span style="color: #ffffff; font-size: 13px;">{motivo_testo}</span>
+                                        </div>
+                                        <p style="font-size: 12px; color: #94a3b8;">La tua disponibilità per questa data è stata svincolata dal registro e non dovrai presentarti al presidio.</p>
+                                        <div style="border-top: 1px solid #1f293d; padding-top: 12px; font-size: 11px; color: #64748b; text-align: center; margin-top: 18px;">
+                                            CISOM Sezione Grosseto — Sovereign Zero Control Tower
+                                        </div>
+                                    </div>
+                                    """
+                                    invia_email_notifica(e_mail, f"CISOM Grosseto: AVVISO ANNULLAMENTO Servizio {titolo_ev}", corpo_annullo)
+
                     c_act1, c_act2, c_act3 = st.columns(3)
                     
                     if c_act1.button("✅ Concludi e Convalida (Svolta)", key=f"end_{s_row['id']}"):
@@ -988,21 +1021,24 @@ elif ruolo_accesso == "Configurazione & Gestione":
                         st.rerun()
                         
                     if c_act2.button("🌧️ Annulla: Allerta Meteo", key=f"w_{s_row['id']}"):
+                        notifica_squadra_annullamento(s_row['id'], s_row['titolo'], dt_v, "Allerta Meteo e condizioni avverse incompatibili con lo svolgimento in sicurezza.")
                         run_query("UPDATE servizi SET stato = 'Annullato per Allerta Meteo' WHERE id = ?", (int(s_row["id"]),), fetch=False)
-                        st.warning("Archiviata per causa meteo.")
+                        st.warning("Archiviata per causa meteo e squadra avvisata via email.")
                         st.rerun()
                         
                     if c_act3.button("👥 Annulla: Mancato Quorum", key=f"q_{s_row['id']}"):
+                        notifica_squadra_annullamento(s_row['id'], s_row['titolo'], dt_v, "Mancato raggiungimento del contingente minimo operativo (quorum non raggiunto).")
                         run_query("UPDATE servizi SET stato = 'Annullato per Mancato Quorum' WHERE id = ?", (int(s_row["id"]),), fetch=False)
-                        st.warning("Archiviata per quorum insufficiente.")
+                        st.warning("Archiviata per quorum e squadra avvisata via email.")
                         st.rerun()
                         
                     st.write("")
                     col_del1, col_del2 = st.columns([3, 1])
                     if col_del2.button("🗑️ Elimina Definitivamente", key=f"hard_del_{s_row['id']}"):
+                        notifica_squadra_annullamento(s_row['id'], s_row['titolo'], dt_v, "Cancellazione definitiva dell'ordine di servizio dai piani operativi.")
                         run_query("DELETE FROM adesioni WHERE servizio_id = ?", (int(s_row["id"]),), fetch=False)
                         run_query("DELETE FROM servizi WHERE id = ?", (int(s_row["id"]),), fetch=False)
-                        st.info("Servizio e relative adesioni eliminate definitivamente.")
+                        st.info("Servizio eliminato e squadra notificata.")
                         st.rerun()
 
     with tab_archivio:
@@ -1059,7 +1095,6 @@ elif ruolo_accesso == "Configurazione & Gestione":
                 run_query("INSERT INTO volontari (nome, email, macroarea, ruolo, attivo) VALUES (?, ?, ?, ?, 1)", 
                           (nome, email_clean, macroarea_sel, qualifica_finale), fetch=False)
                 
-                # INVIO EMAIL DI CONFERMA REGISTRAZIONE ISTITUZIONALE SMOM / CISOM
                 if email_clean and "@" in email_clean:
                     corpo_benvenuto = f"""
                     <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
