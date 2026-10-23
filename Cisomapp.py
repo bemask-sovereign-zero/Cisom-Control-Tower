@@ -16,6 +16,8 @@ st.set_page_config(
 )
 
 # --- CONFIGURAZIONE SMTP PER LE NOTIFICHE EMAIL ---
+APP_URL = "https://sovereign-cisom-tower-bemask.streamlit.app"
+
 try:
     SMTP_SERVER = st.secrets.get("SMTP_SERVER", "smtp.gmail.com")
     SMTP_PORT = int(st.secrets.get("SMTP_PORT", 465))
@@ -378,6 +380,8 @@ def init_db():
                     ore_servizio REAL,
                     pausa_minuti INTEGER DEFAULT 0,
                     stato TEXT DEFAULT 'Programmato',
+                    dotazioni TEXT DEFAULT '',
+                    note_servizio TEXT DEFAULT '',
                     tenant_id TEXT DEFAULT 'GR_01')''')
                     
     c.execute('''CREATE TABLE IF NOT EXISTS adesioni (
@@ -417,6 +421,18 @@ def init_db():
     conn.close()
 
 init_db()
+
+# Migrazioni automatiche di sicurezza
+for alter_sql in [
+    "ALTER TABLE servizi ADD COLUMN dotazioni TEXT DEFAULT ''",
+    "ALTER TABLE servizi ADD COLUMN note_servizio TEXT DEFAULT ''",
+    "ALTER TABLE servizi ADD COLUMN tenant_id TEXT DEFAULT 'GR_01'",
+    "ALTER TABLE adesioni ADD COLUMN pronto_impiego INTEGER DEFAULT 0"
+]:
+    try:
+        run_query(alter_sql, fetch=False)
+    except Exception:
+        pass
 
 def get_coordinate_presidi():
     diz = COMUNI_TEATRO_OPERATIVO.copy()
@@ -682,7 +698,17 @@ elif ruolo_accesso == "Sinottico HUD Timeline":
                     badge_flessibili += f"• 👤 <strong>{flx['nome']}</strong> offre <strong>{flx['ore_effettive']} ore</strong> (fascia oraria libera)<br>"
                 badge_flessibili += '</div>'
             
-            st.markdown(header_card + banner_allerta + blocchi_html + badge_flessibili + '</div>', unsafe_allow_html=True)
+            # Box Dotazioni e Note sul Sinottico
+            dot_extra = ""
+            if serv.get("dotazioni") or serv.get("note_servizio"):
+                dot_extra = '<div style="background-color:#111827; border:1px solid #1f2937; border-radius:6px; padding:10px 14px; margin-top:10px; font-size:12px;">'
+                if serv.get("dotazioni"):
+                    dot_extra += f'<div><strong>📦 Dotazioni & Mezzi:</strong> <span style="color:#93c5fd;">{serv["dotazioni"]}</span></div>'
+                if serv.get("note_servizio"):
+                    dot_extra += f'<div style="margin-top:4px;"><strong>📝 Note Caposquadra:</strong> <span style="color:#cbd5e1;">{serv["note_servizio"]}</span></div>'
+                dot_extra += '</div>'
+
+            st.markdown(header_card + banner_allerta + blocchi_html + badge_flessibili + dot_extra + '</div>', unsafe_allow_html=True)
             
             if scoperti_totali > 0 and not riserve.empty:
                 st.markdown("**🔵 Risorse in riserva pronte all'attivazione immediata:**")
@@ -726,8 +752,13 @@ elif ruolo_accesso == "Bacheca Volontario":
                         d_it = serv["data"]
                         
                     st.markdown(f"### {serv['titolo']} ({serv['luogo']})")
-                    st.write(f"📅 **Data:** {d_it} | ⏰ **Finestra di Servizio:** {serv['ora_inizio']} - {serv['ora_fine']} ({serv['ore_servizio']}h nette)")
+                    st.write(f"📅 **Data:** {d_it} | ⏰ **Finestra:** {serv['ora_inizio']} - {serv['ora_fine']} ({serv['ore_servizio']}h nette)")
                     
+                    if serv.get("dotazioni"):
+                        st.caption(f"📦 **Dotazioni richieste:** {serv['dotazioni']}")
+                    if serv.get("note_servizio"):
+                        st.caption(f"📝 **Disposizioni:** {serv['note_servizio']}")
+
                     adesioni = run_query("SELECT * FROM adesioni WHERE servizio_id = ? AND volontario_id = ?", (int(serv["id"]), int(utente_id)))
                     
                     if not adesioni.empty:
@@ -939,7 +970,7 @@ elif ruolo_accesso == "Configurazione & Gestione":
     ])
     
     with tab_servizi:
-        st.markdown("#### Inserimento Nuovo Servizio Georeferenziato")
+        st.markdown("#### Inserimento Nuovo Servizio & Ordine Operativo")
         with st.form("form_nuovo_servizio"):
             titolo = st.text_input("Titolo Missione / Evento", placeholder="es. Assistenza Manifestazione, Emergenza Idrogeologica")
             col_l, col_d = st.columns(2)
@@ -958,10 +989,94 @@ elif ruolo_accesso == "Configurazione & Gestione":
             ore_calc = max(0.5, round(diff_h - (pausa_min / 60.0), 2))
             st.info(f"⏱️ Durata Netta: **{ore_calc} ore**")
             
-            if st.form_submit_button("Pubblica Servizio") and titolo:
-                sql_ins = "INSERT INTO servizi (titolo, luogo, data, ora_inizio, ora_fine, posti_richiesti, ore_servizio, pausa_minuti, stato) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Programmato')"
-                run_query(sql_ins, (titolo, luogo, str(d), str(t_ini), str(t_fine), posti, ore_calc, pausa_min), fetch=False)
-                st.success("Servizio inserito con successo!")
+            # --- MODULO DOTAZIONI & MEZZI ---
+            st.markdown("##### 📦 Dotazioni, Logistica e Mezzi Assegnati")
+            col_d1, col_d2 = st.columns(2)
+            dotazioni_scelte = col_d1.multiselect(
+                "Seleziona Mezzi e Strutture:",
+                [
+                    "🚑 Ambulanza Soccorso (MSB)",
+                    "🚙 Fuoristrada Protezione Civile 4x4",
+                    "🚐 Furgone Logistico",
+                    "⛺ Gazebo Istituzionale CISOM (3x3)",
+                    "🪑 Tavolo + Panchine da campo",
+                    "💡 Generatore Elettrico / Torre Faro"
+                ],
+                default=["🚑 Ambulanza Soccorso (MSB)", "⛺ Gazebo Istituzionale CISOM (3x3)"]
+            )
+            
+            presidi_scelti = col_d2.multiselect(
+                "Seleziona Presidi Sanitari, TLC & Divisa:",
+                [
+                    "📻 Radio Portatili VHF/UHF",
+                    "🎒 Zaino Soccorso Avanzato + DAE",
+                    "🩺 Aspiratore secreti + Bombola O2",
+                    "🦺 Divisa Operativa Alta Visibilità CISOM",
+                    "🥾 Scarponi Antinfortunistici Obbligatori",
+                    "🌧️ Giacca Antipioggia / Mantella"
+                ],
+                default=["📻 Radio Portatili VHF/UHF", "🎒 Zaino Soccorso Avanzato + DAE", "🦺 Divisa Operativa Alta Visibilità CISOM"]
+            )
+            
+            note_operative = st.text_area(
+                "📝 Disposizioni Particolari / Ordini di Servizio del Capogruppo", 
+                placeholder="es. Ritrovo ore 07:30 in sede per carico materiali. Pranzo al sacco fornito dall'organizzazione."
+            )
+            
+            invia_circolare = st.checkbox("📢 Spedisci Dispaccio Operativo circolare a TUTTI i volontari attivi via email", value=True)
+
+            if st.form_submit_button("Pubblica Missione & Notifica") and titolo:
+                dot_unite = ", ".join(dotazioni_scelte + presidi_scelti)
+                sql_ins = """
+                    INSERT INTO servizi (titolo, luogo, data, ora_inizio, ora_fine, posti_richiesti, ore_servizio, pausa_minuti, stato, dotazioni, note_servizio) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Programmato', ?, ?)
+                """
+                run_query(sql_ins, (titolo, luogo, str(d), str(t_ini), str(t_fine), posti, ore_calc, pausa_min, dot_unite, note_operative), fetch=False)
+                
+                # INVIO DISPACCIO OPERATIVO CIRCOLARE PUSH
+                if invia_circolare:
+                    volontari_dest = run_query("SELECT nome, email FROM volontari WHERE attivo = 1 AND email != ''")
+                    if not volontari_dest.empty:
+                        d_mostra = d.strftime("%d/%m/%Y")
+                        for _, vol in volontari_dest.iterrows():
+                            dest_m = vol["email"]
+                            dest_n = vol["nome"]
+                            if "@" in str(dest_m):
+                                corpo_dispaccio = f"""
+                                <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
+                                    <div style="text-align: center; border-bottom: 2px solid #dc2626; padding-bottom: 14px; margin-bottom: 18px;">
+                                        <div style="font-size: 26px; line-height: 1; color: #dc2626;">✠</div>
+                                        <div style="font-size: 15px; font-weight: 800; color: #ef4444; letter-spacing: 2px; text-transform: uppercase; margin-top: 5px;">SOVRANO MILITARE ORDINE DI MALTA</div>
+                                        <div style="font-size: 12px; font-weight: 600; color: #94a3b8; letter-spacing: 1px;">CORPO ITALIANO DI SOCCORSO DELL'ORDINE DI MALTA</div>
+                                        <div style="font-size: 11px; font-weight: 700; color: #3b82f6; margin-top: 3px;">SEZIONE DI GROSSETO — DISPACCIO OPERATIVO CONVOCAZIONE</div>
+                                    </div>
+                                    <p style="font-size: 14px;">Gentile <strong>{dest_n}</strong>,</p>
+                                    <p style="font-size: 13px; color: #cbd5e1;">È stato pubblicato un nuovo ordine di servizio operativo per la Sezione. Si richiede la massima adesione da parte dei volontari idonei:</p>
+                                    
+                                    <div style="background-color: #111827; border: 1px solid #1f293d; border-radius: 6px; padding: 16px; margin: 16px 0;">
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">🎯 MISSIONE:</strong> <span style="font-size: 15px; font-weight: 800; color: #ffffff;">{titolo}</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">📍 TEATRO OPERATIVO:</strong> <span style="font-weight: 700; color: #38bdf8;">{luogo}</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">📅 DATA:</strong> <span style="font-weight: 700; color: #f8fafc;">{d_mostra}</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">⏱️ ORARIO:</strong> <span style="color: #cbd5e1;">{t_ini} - {t_fine} ({ore_calc}h nette)</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">👥 FABBISOGNO TARGET:</strong> <span style="color: #f59e0b; font-weight: 700;">{posti} volontari</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">📦 MATERIALI ASSEGNATI:</strong> <span style="color: #93c5fd; font-size: 12px;">{dot_unite if dot_unite else 'Standard da campo'}</span></div>
+                                        <div><strong style="color: #94a3b8;">📝 DISPOSIZIONI COMANDO:</strong> <span style="color: #e2e8f0; font-size: 12px;">{note_operative if note_operative else 'Vedi istruzioni del Caposquadra in loco.'}</span></div>
+                                    </div>
+                                    
+                                    <div style="text-align: center; margin: 24px 0;">
+                                        <a href="{APP_URL}" style="background-color: #dc2626; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 800; font-size: 13px; display: inline-block; letter-spacing: 0.5px;">
+                                            👉 APRI LA CONTROL TOWER & CANDIDATI ORA
+                                        </a>
+                                    </div>
+                                    
+                                    <div style="border-top: 1px solid #1f293d; padding-top: 12px; font-size: 11px; color: #64748b; text-align: center;">
+                                        CISOM Sezione Grosseto — Sovereign Zero Control Tower
+                                    </div>
+                                </div>
+                                """
+                                invia_email_notifica(dest_m, f"DISPACCIO OPERATIVO CISOM: {titolo} ({d_mostra})", corpo_dispaccio)
+
+                st.success("Servizio inserito e dispaccio circolare inviato alla forza attiva!")
                 st.rerun()
 
         st.divider()
@@ -1146,7 +1261,7 @@ elif ruolo_accesso == "Configurazione & Gestione":
 
                 col_v1.write(f"👤 **{v['nome']}** — *{v['ruolo']}*{em_label} ({stato_txt})")
                 
-                # --- SOSPENSIONE / RIATTIVAZIONE PROTETTA ---
+                # SOSPENSIONE / RIATTIVAZIONE
                 if v.get("attivo", 1) == 1:
                     if col_v2.button("Disattiva", key=f"dis_{v['id']}"):
                         run_query("UPDATE volontari SET attivo = 0 WHERE id = ?", (int(v["id"]),), fetch=False)
@@ -1175,7 +1290,7 @@ elif ruolo_accesso == "Configurazione & Gestione":
                             invia_email_notifica(email_val, "CISOM Grosseto: Profilo Riattivato", corpo_riatt)
                         st.rerun()
                 
-                # --- CANCELLAZIONE FISICA CON NOTIFICA PREVENTIVA ---
+                # CANCELLAZIONE FISICA CON NOTIFICA
                 if col_v3.button("Elimina Def.", key=f"del_def_{v['id']}"):
                     email_dest = email_val
                     nome_dest = v['nome']
