@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 
 # --- CONFIGURAZIONE HUD SOVEREIGN ZERO ---
 st.set_page_config(
-    page_title="CISOM Sovereign Control Tower", 
+    page_title="CISOM Grosseto - Sovereign Zero Control Tower", 
     page_icon="🚑", 
     layout="wide", 
     initial_sidebar_state="expanded"
@@ -21,7 +21,7 @@ try:
     SMTP_PORT = int(st.secrets.get("SMTP_PORT", 465))
     SMTP_USER = st.secrets.get("SMTP_USER", "")
     SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD", "")
-    EMAIL_MITTENTE = st.secrets.get("EMAIL_MITTENTE", "CISOM Grosseto <notifiche@cisom-grosseto.it>")
+    EMAIL_MITTENTE = st.secrets.get("EMAIL_MITTENTE", "CISOM Sezione Grosseto <notifiche@cisom-grosseto.it>")
 except Exception:
     SMTP_SERVER = "smtp.gmail.com"
     SMTP_PORT = 465
@@ -30,7 +30,7 @@ except Exception:
     EMAIL_MITTENTE = "CISOM Grosseto <notifiche@cisom-grosseto.it>"
 
 def invia_email_notifica(destinatario, oggetto, corpo_html):
-    """Spedizione e-mail formale con fallback protetto e diagnostica."""
+    """Spedizione e-mail formale con template SMOM e diagnostica."""
     destinatario = str(destinatario).strip()
     if not destinatario or "@" not in destinatario:
         return False, "Indirizzo e-mail non valido o assente."
@@ -59,7 +59,7 @@ def invia_email_notifica(destinatario, oggetto, corpo_html):
     except Exception as e:
         return False, f"Errore SMTP: {str(e)}"
 
-# --- CSS ARCHITETTURA GRAFICA DARK HUD ---
+# --- CSS ARCHITETTURA GRAFICA DARK HUD (SOVEREIGN ZERO) ---
 st.markdown("""
 <style>
 .stApp {
@@ -249,7 +249,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- ARCHITETTURA GERARCHICA SMOM / CISOM ---
+# --- ARCHITETTURA GERARCHICA SMOM / CISOM (4 MACROAREE DISTINTE) ---
 STRUTTURA_ISTITUZIONALE_SMOM_CISOM = {
     "1. Componente Sacerdotale & Assistenza Spirituale": [
         "Cardinale Patrono / Prelato dell'Ordine",
@@ -335,8 +335,12 @@ COMUNI_TEATRO_OPERATIVO = {
     "Sorano": {"lat": 42.6821, "lon": 11.7144},
     "Magliano in Toscana": {"lat": 42.5989, "lon": 11.2936},
     "Scansano": {"lat": 42.6892, "lon": 11.3344},
+    "Campagnatico": {"lat": 42.8841, "lon": 11.2747},
+    "Civitella Paganico": {"lat": 42.9961, "lon": 11.2828},
     "Castel del Piano (Amiata)": {"lat": 42.8924, "lon": 11.5367},
     "Arcidosso (Amiata)": {"lat": 42.8719, "lon": 11.5385},
+    "Santa Fiora": {"lat": 42.8317, "lon": 11.5847},
+    "Castell'Azzara": {"lat": 42.7725, "lon": 11.7089},
 }
 
 # --- ENGINE DATABASE ---
@@ -374,7 +378,6 @@ def init_db():
                     ore_servizio REAL,
                     pausa_minuti INTEGER DEFAULT 0,
                     stato TEXT DEFAULT 'Programmato',
-                    note_stato TEXT DEFAULT '',
                     tenant_id TEXT DEFAULT 'GR_01')''')
                     
     c.execute('''CREATE TABLE IF NOT EXISTS adesioni (
@@ -406,6 +409,7 @@ def init_db():
             ("CISOM Sezione Grosseto", "Massa Marittima", 43.0504, 10.8911),
             ("CISOM Sezione Grosseto", "Castiglione della Pescaia", 42.7645, 10.8808),
             ("CISOM Sezione Grosseto", "Orbetello / Albinia", 42.4408, 11.2185),
+            ("CISOM Sezione Grosseto", "Monte Argentario", 42.4357, 11.1205),
             ("CISOM Sezione Grosseto", "Castel del Piano (Amiata)", 42.8924, 11.5367),
         ]
         c.executemany("INSERT OR IGNORE INTO presidi (sezione, nome_presidio, latitudine, longitudine) VALUES (?, ?, ?, ?)", dati_iniziali)
@@ -413,17 +417,6 @@ def init_db():
     conn.close()
 
 init_db()
-
-# Migrazioni automatiche di sicurezza
-for alter_sql in [
-    "ALTER TABLE servizi ADD COLUMN note_stato TEXT DEFAULT ''",
-    "ALTER TABLE servizi ADD COLUMN tenant_id TEXT DEFAULT 'GR_01'",
-    "ALTER TABLE adesioni ADD COLUMN pronto_impiego INTEGER DEFAULT 0"
-]:
-    try:
-        run_query(alter_sql, fetch=False)
-    except Exception:
-        pass
 
 def get_coordinate_presidi():
     diz = COMUNI_TEATRO_OPERATIVO.copy()
@@ -480,7 +473,7 @@ def get_meteo_dettagliato(luogo, data_evento_str):
 
 # --- PANNELLO LATERALE ---
 st.sidebar.title("🚑 CISOM GROSSETO")
-st.sidebar.caption("Sovereign Control Tower")
+st.sidebar.caption("Sovereign Zero Control Tower")
 ruolo_accesso = st.sidebar.radio("NAVIGAZIONE", [
     "Radar Annuale",
     "Sinottico HUD Timeline",
@@ -528,12 +521,17 @@ if ruolo_accesso == "Radar Annuale":
     st.markdown(grid_html, unsafe_allow_html=True)
     
     st.divider()
-    st.markdown("#### Elenco Attività Valide nell'Anno")
+    st.markdown("#### Elenco Attività Programmate nell'Anno")
     if df_servizi_anno.empty:
         st.info("Nessuna attività registrata per l'annualità selezionata.")
     else:
+        df_mostra = df_servizi_anno.copy()
+        try:
+            df_mostra["data"] = pd.to_datetime(df_mostra["data"]).dt.strftime('%d/%m/%Y')
+        except:
+            pass
         st.dataframe(
-            df_servizi_anno[["data", "titolo", "luogo", "posti_richiesti", "stato"]].rename(columns={
+            df_mostra[["data", "titolo", "luogo", "posti_richiesti", "stato"]].rename(columns={
                 "data": "Data", "titolo": "Missione", "luogo": "Località", 
                 "posti_richiesti": "Fabbisogno", "stato": "Stato"
             }),
@@ -658,7 +656,10 @@ elif ruolo_accesso == "Sinottico HUD Timeline":
                     eccedenza = c_ora - target
                     label_stato = f"{c_ora}/{target} (+{eccedenza} RIS)"
                 
-                nomi_tags = "".join([f'<div class="badge-name">{n}</div>' for n in presenti_ora]) if presenti_ora else '<div style="color:#6b7280; font-size:10px; margin-top:8px;">[ VUOTO ]</div>'
+                if presenti_ora:
+                    nomi_tags = "".join([f'<div class="badge-name">{n}</div>' for n in presenti_ora])
+                else:
+                    nomi_tags = '<div style="color:#6b7280; font-size:10px; margin-top:8px;">[ VUOTO ]</div>'
                 
                 blocchi_html += (
                     f'<div class="time-slot {css_slot}">'
@@ -669,14 +670,16 @@ elif ruolo_accesso == "Sinottico HUD Timeline":
                 )
             blocchi_html += '</div>'
             
-            banner_allerta = f'<div class="alert-banner-yellow">⚠️ ATTENZIONE: Rilevati blocchi orari parziali o scoperti ({scoperti_totali} ore da integrare).</div>' if scoperti_totali > 0 else ""
-            
+            banner_allerta = ""
+            if scoperti_totali > 0:
+                banner_allerta = f'<div class="alert-banner-yellow">⚠️ ATTENZIONE: Rilevati blocchi orari parziali o scoperti ({scoperti_totali} ore da integrare).</div>'
+                
             da_concordare = confermati[confermati["modalita"] == "Da Concordare"]
             badge_flessibili = ""
             if not da_concordare.empty:
                 badge_flessibili = '<div class="badge-da-concordare"><strong>🔄 Disponibilità flessibili da concordare con la squadra:</strong><br>'
                 for _, flx in da_concordare.iterrows():
-                    badge_flessibili += f"• 👤 <strong>{flx['nome']}</strong> offre <strong>{flx['ore_effettive']} ore</strong> (fascia libera)<br>"
+                    badge_flessibili += f"• 👤 <strong>{flx['nome']}</strong> offre <strong>{flx['ore_effettive']} ore</strong> (fascia oraria libera)<br>"
                 badge_flessibili += '</div>'
             
             st.markdown(header_card + banner_allerta + blocchi_html + badge_flessibili + '</div>', unsafe_allow_html=True)
@@ -701,7 +704,7 @@ elif ruolo_accesso == "Bacheca Volontario":
         st.warning("Nessun membro attivo registrato in archivio.")
     else:
         utente_id = st.selectbox(
-            "Identificati con il tuo profilo:", 
+            "Identificati con il tuo profilo istituzionale:", 
             volontari_df["id"].tolist(), 
             format_func=lambda x: f"{volontari_df.loc[volontari_df['id'] == x, 'nome'].values[0]} — [{volontari_df.loc[volontari_df['id'] == x, 'ruolo'].values[0]}]"
         )
@@ -723,31 +726,48 @@ elif ruolo_accesso == "Bacheca Volontario":
                         d_it = serv["data"]
                         
                     st.markdown(f"### {serv['titolo']} ({serv['luogo']})")
-                    st.write(f"📅 **Data:** {d_it} | ⏰ **Finestra:** {serv['ora_inizio']} - {serv['ora_fine']} ({serv['ore_servizio']}h nette)")
+                    st.write(f"📅 **Data:** {d_it} | ⏰ **Finestra di Servizio:** {serv['ora_inizio']} - {serv['ora_fine']} ({serv['ore_servizio']}h nette)")
                     
                     adesioni = run_query("SELECT * FROM adesioni WHERE servizio_id = ? AND volontario_id = ?", (int(serv["id"]), int(utente_id)))
                     
                     if not adesioni.empty:
                         mia_ad = adesioni.iloc[0]
-                        st.success(f"✅ La tua disponibilità è registrata. Modalità: **{mia_ad['modalita']}** ({mia_ad['ore_effettive']}h)")
+                        st.success(f"✅ La tua disponibilità per questa missione è confermata a registro. Grazie. Modalità: **{mia_ad['modalita']}** ({mia_ad['ore_effettive']}h)")
                         
                         if st.button("❌ Revoca / Cancella la mia disponibilità", key=f"del_ad_{serv['id']}_{utente_id}"):
-                            # Eliminazione chirurgica della disponibilità
+                            # Eliminazione della sola disponibilità
                             run_query("DELETE FROM adesioni WHERE servizio_id = ? AND volontario_id = ?", 
                                       (int(serv["id"]), int(utente_id)), fetch=False)
                             
+                            # Invio Notifica Email Revoca Turno con Stemma SMOM
                             if utente_email and "@" in str(utente_email):
                                 corpo_revoca = f"""
-                                <div style="font-family: Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 20px; border-radius: 8px;">
-                                    <h3 style="color: #ef4444; border-bottom: 2px solid #ef4444; padding-bottom: 8px;">CISOM - CONFERMA REVOCA DISPONIBILITÀ</h3>
-                                    <p>Gentile <strong>{utente_nome}</strong>,</p>
-                                    <p>Confermiamo l'avvenuta revoca della tua disponibilità per la missione: <strong>{serv['titolo']}</strong> ({serv['luogo']}) in data <strong>{d_it}</strong>.</p>
-                                    <p>Il tuo monte ore e il ruolino di servizio sono stati ricalcolati automaticamente.</p>
+                                <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
+                                    <div style="text-align: center; border-bottom: 2px solid #ef4444; padding-bottom: 14px; margin-bottom: 18px;">
+                                        <div style="font-size: 26px; line-height: 1; color: #ef4444;">✠</div>
+                                        <div style="font-size: 15px; font-weight: 800; color: #ef4444; letter-spacing: 2px; text-transform: uppercase; margin-top: 5px;">SOVRANO MILITARE ORDINE DI MALTA</div>
+                                        <div style="font-size: 12px; font-weight: 600; color: #94a3b8; letter-spacing: 1px;">CORPO ITALIANO DI SOCCORSO DELL'ORDINE DI MALTA</div>
+                                        <div style="font-size: 11px; font-weight: 700; color: #ef4444; margin-top: 3px;">SEZIONE DI GROSSETO — NOTIFICA REVOCA DISPONIBILITÀ</div>
+                                    </div>
+                                    <p style="font-size: 14px; margin-bottom: 10px;">Gentile <strong>{utente_nome}</strong>,</p>
+                                    <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 14px;">
+                                        Inquadramento: <strong>{utente_ruolo}</strong><br>
+                                        Si attesta l'avvenuta <strong>revoca</strong> della tua disponibilità per il seguente servizio operativo:
+                                    </p>
+                                    <div style="background-color: #111827; border: 1px solid #1f293d; border-radius: 6px; padding: 16px; margin: 16px 0;">
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">🎯 MISSIONE:</strong> <span style="font-size: 14px; font-weight: 800; color: #ffffff;">{serv['titolo']}</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">📍 TEATRO OPERATIVO:</strong> <span style="font-weight: 700; color: #38bdf8;">{serv['luogo']}</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">📅 DATA:</strong> <span style="font-weight: 700; color: #f8fafc;">{d_it}</span></div>
+                                    </div>
+                                    <p style="font-size: 12px; color: #94a3b8;">La tua posizione a ruolino per questa data è stata rimossa e il posto liberato sulla Control Tower.</p>
+                                    <div style="border-top: 1px solid #1f293d; padding-top: 12px; font-size: 11px; color: #64748b; text-align: center;">
+                                        CISOM Sezione Grosseto — Sovereign Zero Control Tower
+                                    </div>
                                 </div>
                                 """
                                 invia_email_notifica(utente_email, f"CISOM Grosseto: Conferma Revoca Turno {serv['titolo']}", corpo_revoca)
 
-                            st.toast("Disponibilità revocata e ricalcolo eseguito!")
+                            st.toast("Disponibilità revocata con successo!")
                             st.rerun()
                     else:
                         st.markdown("#### Scegli come dare la tua disponibilità:")
@@ -775,11 +795,12 @@ elif ruolo_accesso == "Bacheca Volontario":
                             diff = (datetime.combine(date.today(), datetime.strptime(h_fine_scelta, "%H:%M").time()) - 
                                     datetime.combine(date.today(), datetime.strptime(h_ini_scelta, "%H:%M").time())).total_seconds() / 3600.0
                             ore_da_registrare = max(0.5, round(diff, 1))
-                            col_m2.caption(f"Fascia oraria: **{ore_da_registrare}h** nette.")
+                            col_m2.caption(f"Fascia oraria selezionata: **{ore_da_registrare}h** nette.")
                             
                         elif tipo_scelta == "Monte Ore Flessibile (Da concordare)":
                             mod_salvata = "Da Concordare"
                             ore_da_registrare = col_m2.number_input("Quante ore metti a disposizione?", min_value=1.0, max_value=float(serv["ore_servizio"]), value=3.0, step=0.5, key=f"ore_flx_{serv['id']}")
+                            col_m2.caption("L'orario esatto verrà armonizzato dal Caposquadra con la squadra operativa.")
                             
                         if st.button("✋ Invia la mia disponibilità", key=f"btn_send_{serv['id']}"):
                             run_query("""
@@ -787,13 +808,31 @@ elif ruolo_accesso == "Bacheca Volontario":
                                 VALUES (?, ?, 'Confermato', ?, ?, ?, '', ?)
                             """, (int(serv["id"]), int(utente_id), mod_salvata, h_ini_scelta, h_fine_scelta, ore_da_registrare), fetch=False)
                             
+                            # Invio Notifica Email Memo Turno con Stemma SMOM
                             if utente_email and "@" in str(utente_email):
                                 corpo_mail = f"""
-                                <div style="font-family: Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 20px; border-radius: 8px;">
-                                    <h3 style="color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">CISOM - CONFERMA DISPONIBILITÀ</h3>
-                                    <p>Gentile <strong>{utente_nome}</strong>,</p>
-                                    <p>La tua disponibilità per la missione <strong>{serv['titolo']}</strong> ({serv['luogo']}) è stata acquisita.</p>
-                                    <p>Data: <strong>{d_it}</strong> | Impegno: <strong>{ore_da_registrare}h</strong></p>
+                                <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
+                                    <div style="text-align: center; border-bottom: 2px solid #dc2626; padding-bottom: 14px; margin-bottom: 18px;">
+                                        <div style="font-size: 26px; line-height: 1; color: #dc2626;">✠</div>
+                                        <div style="font-size: 15px; font-weight: 800; color: #ef4444; letter-spacing: 2px; text-transform: uppercase; margin-top: 5px;">SOVRANO MILITARE ORDINE DI MALTA</div>
+                                        <div style="font-size: 12px; font-weight: 600; color: #94a3b8; letter-spacing: 1px;">CORPO ITALIANO DI SOCCORSO DELL'ORDINE DI MALTA</div>
+                                        <div style="font-size: 11px; font-weight: 700; color: #3b82f6; margin-top: 3px;">SEZIONE DI GROSSETO — FOGLIO DI SERVIZIO</div>
+                                    </div>
+                                    <p style="font-size: 14px; margin-bottom: 10px;">Gentile <strong>{utente_nome}</strong>,</p>
+                                    <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 14px;">
+                                        Inquadramento: <strong>{utente_ruolo}</strong><br>
+                                        È stata registrata con successo la tua disponibilità operativa per il seguente intervento:
+                                    </p>
+                                    <div style="background-color: #111827; border: 1px solid #1f293d; border-radius: 6px; padding: 16px; margin: 16px 0;">
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">🎯 MISSIONE:</strong> <span style="font-size: 14px; font-weight: 800; color: #ffffff;">{serv['titolo']}</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">📍 TEATRO OPERATIVO:</strong> <span style="font-weight: 700; color: #38bdf8;">{serv['luogo']}</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">📅 DATA:</strong> <span style="font-weight: 700; color: #f8fafc;">{d_it}</span></div>
+                                        <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">⏱️ MODALITÀ:</strong> <span style="color: #cbd5e1;">{tipo_scelta}</span></div>
+                                        <div><strong style="color: #94a3b8;">⏳ IMPEGNO ASSEGNATO:</strong> <span style="color: #4ade80; font-weight: 700;">{ore_da_registrare}h</span> (Fascia: {h_ini_scelta} - {h_fine_scelta})</div>
+                                    </div>
+                                    <div style="border-top: 1px solid #1f293d; padding-top: 12px; font-size: 11px; color: #64748b; text-align: center;">
+                                        CISOM Sezione Grosseto — Sovereign Zero Control Tower
+                                    </div>
                                 </div>
                                 """
                                 invia_email_notifica(utente_email, f"CISOM Grosseto: Memo Servizio {serv['titolo']} ({d_it})", corpo_mail)
@@ -802,13 +841,12 @@ elif ruolo_accesso == "Bacheca Volontario":
                             st.rerun()
 
 # ----------------------------------------------------
-# 4. CONSUNTIVO & MONTE ORE (CALCOLO PULITO BONIFICATO)
+# 4. CONSUNTIVO & MONTE ORE (BONIFICATO)
 # ----------------------------------------------------
 elif ruolo_accesso == "Consuntivo & Monte Ore":
     st.subheader("📊 Analisi Operativa & Monte Ore Ufficiale CISOM")
-    st.caption("I contatori includono unicamente le attività attive o effettivamente concluse")
+    st.caption("I contatori escludono automaticamente le missioni cancellate o revocate")
     
-    # Query bonificata: esclude eventi cancellati o orfani
     query_ore = """
         SELECT v.nome AS Membro, 
                v.email AS Email,
@@ -842,7 +880,11 @@ elif ruolo_accesso == "Consuntivo & Monte Ore":
     else:
         for _, row in in_attesa.iterrows():
             c_info, c_action = st.columns([4, 1])
-            c_info.write(f"👤 **{row['nome']}** [{row['ruolo']}] | {row['titolo']} ({row['data']}) — Modalità: *{row['modalita']}* (**{row['ore_effettive']}h**)")
+            try:
+                data_mostra = datetime.strptime(row['data'], "%Y-%m-%d").strftime("%d/%m/%Y")
+            except:
+                data_mostra = row['data']
+            c_info.write(f"👤 **{row['nome']}** [{row['ruolo']}] | {row['titolo']} ({data_mostra}) — Modalità: *{row['modalita']}* (**{row['ore_effettive']}h**)")
             if c_action.button("Convalida Ore", key=f"val_{row['id']}"):
                 run_query("UPDATE adesioni SET validato = 1 WHERE id = ?", (int(row["id"]),), fetch=False)
                 st.rerun()
@@ -871,9 +913,9 @@ elif ruolo_accesso == "🏛️ Sala Situazioni":
         attivi = len(df_stat[df_stat["stato_servizio"] == "Programmato"])
         pronti = len(df_stat[df_stat["pronto_impiego"] == 1])
 
-        c1.metric("Monte Ore Concluso", f"{tot_ore:.1f} h")
-        c2.metric("Impegni in Corso", attivi)
-        c3.metric("Disponibilità Operative", len(df_stat))
+        c1.metric("Monte Ore Effettuato", f"{tot_ore:.1f} h")
+        c2.metric("Turni in Corso", attivi)
+        c3.metric("Adesioni Totali", len(df_stat))
 
         st.write("---")
         st.dataframe(df_stat, width='stretch')
@@ -889,18 +931,18 @@ elif ruolo_accesso == "🏛️ Sala Situazioni":
         st.info("Nessun dato di servizio attivo al momento.")
 
 # ----------------------------------------------------
-# 6. CONFIGURAZIONE, GESTIONE & ARCHIVIO STORICO
+# 6. CONFIGURAZIONE, GESTIONE & ARCHIVIO
 # ----------------------------------------------------
 elif ruolo_accesso == "Configurazione & Gestione":
     tab_servizi, tab_archivio, tab_volontari, tab_presidi = st.tabs([
-        "⚙️ Missioni & Gestione", 
+        "⚙️ Servizi & Eventi", 
         "🗃️ Archivio Distrettuale", 
-        "👤 Volontari", 
-        "📍 Presidi & Mappa"
+        "👤 Anagrafica Ufficiale & Ruoli", 
+        "📍 Presidi & Basi Operative"
     ])
     
     with tab_servizi:
-        st.markdown("#### Inserimento Nuova Missione Georeferenziata")
+        st.markdown("#### Inserimento Nuovo Servizio Georeferenziato")
         with st.form("form_nuovo_servizio"):
             titolo = st.text_input("Titolo Missione / Evento", placeholder="es. Assistenza Manifestazione, Emergenza Idrogeologica")
             col_l, col_d = st.columns(2)
@@ -929,74 +971,145 @@ elif ruolo_accesso == "Configurazione & Gestione":
         st.markdown("#### 🎛️ Gestione Direttivo: Ciclo di Vita Missioni Attive")
         servizi_attivi = run_query("SELECT * FROM servizi WHERE stato = 'Programmato' ORDER BY data ASC")
         if servizi_attivi.empty:
-            st.info("Nessuna attività in stato Programmato.")
+            st.info("Nessuna attività in corso.")
         else:
             for _, s_row in servizi_attivi.iterrows():
-                with st.expander(f"📅 {s_row['data']} — {s_row['titolo']} ({s_row['luogo']})"):
+                try:
+                    dt_v = datetime.strptime(s_row['data'], "%Y-%m-%d").strftime("%d/%m/%Y")
+                except:
+                    dt_v = s_row['data']
+                    
+                with st.expander(f"📅 {dt_v} — {s_row['titolo']} ({s_row['luogo']})"):
                     c_act1, c_act2, c_act3 = st.columns(3)
                     
                     if c_act1.button("✅ Concludi e Convalida (Svolta)", key=f"end_{s_row['id']}"):
                         run_query("UPDATE servizi SET stato = 'Concluso' WHERE id = ?", (int(s_row["id"]),), fetch=False)
-                        st.success("Missione archiviata come 'Concluso'. Le ore sono ora valide a registro.")
+                        st.success("Missione contrassegnata come Conclusa.")
                         st.rerun()
                         
                     if c_act2.button("🌧️ Annulla: Allerta Meteo", key=f"w_{s_row['id']}"):
-                        run_query("UPDATE servizi SET stato = 'Annullato Meteo' WHERE id = ?", (int(s_row["id"]),), fetch=False)
-                        st.warning("Missione archiviata per causa meteo. Nessuna ora addebitata.")
+                        run_query("UPDATE servizi SET stato = 'Annullato per Allerta Meteo' WHERE id = ?", (int(s_row["id"]),), fetch=False)
+                        st.warning("Archiviata per causa meteo.")
                         st.rerun()
                         
                     if c_act3.button("👥 Annulla: Mancato Quorum", key=f"q_{s_row['id']}"):
-                        run_query("UPDATE servizi SET stato = 'Annullato Quorum' WHERE id = ?", (int(s_row["id"]),), fetch=False)
-                        st.warning("Missione archiviata per quorum non raggiunto.")
+                        run_query("UPDATE servizi SET stato = 'Annullato per Mancato Quorum' WHERE id = ?", (int(s_row["id"]),), fetch=False)
+                        st.warning("Archiviata per quorum insufficiente.")
                         st.rerun()
                         
                     st.write("")
                     col_del1, col_del2 = st.columns([3, 1])
-                    if col_del2.button("🗑️ Cancella Definitivamente", key=f"hard_del_{s_row['id']}"):
-                        # Pulizia a cascata: cancella adesioni collegate e servizio
+                    if col_del2.button("🗑️ Elimina Definitivamente", key=f"hard_del_{s_row['id']}"):
                         run_query("DELETE FROM adesioni WHERE servizio_id = ?", (int(s_row["id"]),), fetch=False)
                         run_query("DELETE FROM servizi WHERE id = ?", (int(s_row["id"]),), fetch=False)
-                        st.info("Missione e adesioni collegate eliminate definitivamente.")
+                        st.info("Servizio e relative adesioni eliminate definitivamente.")
                         st.rerun()
 
     with tab_archivio:
         st.markdown("#### 🗃️ Registro Storico & Archivio Distrettuale")
-        st.caption("Conserva la memoria degli interventi svolti e degli eventi annullati per cause di forza maggiore")
+        st.caption("Conserva la memoria degli eventi svolti e delle missioni annullate per cause di forza maggiore")
         
-        storico_servizi = run_query("SELECT id, titolo, luogo, data, posti_richiesti, ore_servizio, stato FROM servizi WHERE stato != 'Programmato' ORDER BY data DESC")
+        storico_servizi = run_query("""
+            SELECT titolo AS Missione, luogo AS Presidio, data AS Data_Evento, 
+                   posti_richiesti AS Target, ore_servizio AS Ore, stato AS Esito
+            FROM servizi 
+            WHERE stato != 'Programmato' 
+            ORDER BY data DESC
+        """)
+        
         if storico_servizi.empty:
-            st.info("Nessuna missione presente nell'archivio storico.")
+            st.info("Nessuna missione archiviata a registro.")
         else:
-            st.dataframe(storico_servizi.rename(columns={
-                "titolo": "Missione", "luogo": "Presidio", "data": "Data",
-                "posti_richiesti": "Target", "ore_servizio": "Ore Previste", "stato": "Esito Finale"
-            }), width='stretch')
+            df_arch_mostra = storico_servizi.copy()
+            try:
+                df_arch_mostra["Data_Evento"] = pd.to_datetime(df_arch_mostra["Data_Evento"]).dt.strftime('%d/%m/%Y')
+            except:
+                pass
+            st.dataframe(df_arch_mostra, width='stretch')
 
     with tab_volontari:
-        st.markdown("#### Anagrafica Ufficiale Volontari")
+        st.markdown("#### Registrazione Membro / Inquadramento Istituzionale")
+        
+        macroarea_sel = st.selectbox(
+            "1. Seleziona Macroarea Istituzionale",
+            list(STRUTTURA_ISTITUZIONALE_SMOM_CISOM.keys())
+        )
+        gradi_disponibili = STRUTTURA_ISTITUZIONALE_SMOM_CISOM[macroarea_sel]
+        
         with st.form("form_nuovo_membro"):
             col_n, col_e = st.columns(2)
             nome = col_n.text_input("Nome e Cognome")
-            email = col_e.text_input("Indirizzo E-mail")
+            email = col_e.text_input("Indirizzo E-mail (per notifiche e memo)", placeholder="nome.cognome@email.it")
             
-            macroarea_sel = st.selectbox("Macroarea Istituzionale", list(STRUTTURA_ISTITUZIONALE_SMOM_CISOM.keys()))
-            gradi_disponibili = STRUTTURA_ISTITUZIONALE_SMOM_CISOM[macroarea_sel]
-            grado_scelto = st.selectbox("Grado / Titolo Ufficiale", gradi_disponibili)
+            col_g1, col_g2 = st.columns(2)
+            grado_scelto = col_g1.selectbox("2. Grado / Titolo Ufficiale", gradi_disponibili)
             
-            if st.form_submit_button("Registra Volontario") and nome:
+            ruolo_operativo = col_g2.selectbox(
+                "Funzione Operativa sul Campo",
+                ["Nessuna (Rango Istituzionale / Rappresentanza)"] + STRUTTURA_ISTITUZIONALE_SMOM_CISOM["4. Corpo Operativo, Sanitario & Protezione Civile"]
+            )
+            
+            qualifica_finale = grado_scelto
+            if ruolo_operativo != "Nessuna (Rango Istituzionale / Rappresentanza)" and ruolo_operativo != grado_scelto:
+                qualifica_finale += f" | {ruolo_operativo}"
+                
+            submit_reg = st.form_submit_button("Registra nel Ruolo Generale Ufficiale")
+            if submit_reg and nome:
                 email_clean = str(email).strip()
                 run_query("INSERT INTO volontari (nome, email, macroarea, ruolo, attivo) VALUES (?, ?, ?, ?, 1)", 
-                          (nome, email_clean, macroarea_sel, grado_scelto), fetch=False)
-                st.success(f"Volontario {nome} registrato!")
+                          (nome, email_clean, macroarea_sel, qualifica_finale), fetch=False)
+                
+                # INVIO EMAIL DI CONFERMA REGISTRAZIONE ISTITUZIONALE SMOM / CISOM
+                if email_clean and "@" in email_clean:
+                    corpo_benvenuto = f"""
+                    <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
+                        <div style="text-align: center; border-bottom: 2px solid #dc2626; padding-bottom: 14px; margin-bottom: 18px;">
+                            <div style="font-size: 26px; line-height: 1; color: #dc2626;">✠</div>
+                            <div style="font-size: 15px; font-weight: 800; color: #ef4444; letter-spacing: 2px; text-transform: uppercase; margin-top: 5px;">SOVRANO MILITARE ORDINE DI MALTA</div>
+                            <div style="font-size: 12px; font-weight: 600; color: #94a3b8; letter-spacing: 1px;">CORPO ITALIANO DI SOCCORSO DELL'ORDINE DI MALTA</div>
+                            <div style="font-size: 11px; font-weight: 700; color: #3b82f6; margin-top: 3px;">SEZIONE DI GROSSETO — REGISTRO UFFICIALE</div>
+                        </div>
+                        <p style="font-size: 14px; margin-bottom: 10px;">Gentile <strong>{nome}</strong>,</p>
+                        <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 14px;">
+                            Si attesta l'avvenuta iscrizione a registro nel portale operativo <strong>Sovereign Zero Control Tower</strong>:
+                        </p>
+                        <div style="background-color: #111827; border: 1px solid #1f293d; border-radius: 6px; padding: 16px; margin: 16px 0;">
+                            <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">🏛️ MACROAREA:</strong> <span style="font-weight: 700; color: #ffffff;">{macroarea_sel}</span></div>
+                            <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">✠ RANGO / QUALIFICA:</strong> <span style="font-weight: 700; color: #ef4444;">{qualifica_finale}</span></div>
+                            <div><strong style="color: #94a3b8;">✉️ RECAPITO NOTIFICHE:</strong> <span style="color: #38bdf8;">{email_clean}</span></div>
+                        </div>
+                        <div style="background-color: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; padding: 8px 12px; border-radius: 4px; font-size: 12px; color: #93c5fd; margin-bottom: 18px;">
+                            ℹ️ Il tuo profilo è ora operativo per la consultazione degli ordini di servizio e la disponibilità alle missioni.
+                        </div>
+                        <div style="border-top: 1px solid #1f293d; padding-top: 12px; font-size: 11px; color: #64748b; text-align: center;">
+                            CISOM Sezione Grosseto — Servizio TLC & Sistemi Informativi
+                        </div>
+                    </div>
+                    """
+                    esito, dtl = invia_email_notifica(email_clean, "CISOM Grosseto: Conferma Registrazione nel Ruolo Ufficiale", corpo_benvenuto)
+                    if esito:
+                        st.success(f"Registrato con successo! E-mail di conferma inviata a {email_clean}")
+                    else:
+                        st.warning(f"Membro salvato a registro, avviso e-mail: {dtl}")
+                else:
+                    st.info(f"Registrato: {nome} [{qualifica_finale}] (Senza e-mail)")
+
                 st.rerun()
 
         st.divider()
+        st.markdown("#### 🛡️ Anagrafica & Soft Delete (Storico Protetto)")
         volontari_db = run_query("SELECT * FROM volontari ORDER BY attivo DESC, nome ASC")
-        if not volontari_db.empty:
+        
+        if volontari_db.empty:
+            st.info("Nessun membro presente a registro.")
+        else:
             for _, v in volontari_db.iterrows():
                 col_v1, col_v2, col_v3 = st.columns([3, 1, 1])
-                stato_txt = "🟢 Attivo" if v.get("attivo", 1) == 1 else "⚪ Disattivato"
-                col_v1.write(f"👤 **{v['nome']}** — *{v['ruolo']}* ({stato_txt})")
+                stato_txt = "🟢 Attivo" if v.get("attivo", 1) == 1 else "⚪ Disattivato (Storico conservato)"
+                email_val = v.get("email", "") if hasattr(v, "get") else ""
+                em_label = f" — ✉️ {email_val}" if email_val and str(email_val) != "None" else ""
+
+                col_v1.write(f"👤 **{v['nome']}** — *{v['ruolo']}*{em_label} ({stato_txt})")
                 
                 if v.get("attivo", 1) == 1:
                     if col_v2.button("Disattiva", key=f"dis_{v['id']}"):
@@ -1013,23 +1126,78 @@ elif ruolo_accesso == "Configurazione & Gestione":
                     st.rerun()
 
     with tab_presidi:
-        st.markdown("#### 📍 Presidi Territoriali e Rete CISOM")
-        df_naz = pd.DataFrame(RETE_ISTITUZIONALE_CISOM)
-        presidi_db = run_query("SELECT * FROM presidi ORDER BY nome_presidio ASC")
+        st.markdown("#### 📍 Presidi Territoriali, Basi e Rete CISOM")
 
-        df_map_loc = presidi_db[['latitudine', 'longitudine']].rename(columns={'latitudine': 'latitude', 'longitudine': 'longitude'})
-        if not df_map_loc.empty:
-            st.map(df_map_loc)
-        
+        vista_mappa = st.radio(
+            "Seleziona Livello Operativo:",
+            ["🔴 Presidi & Distaccamenti di Sezione (Locali)", "🇮🇹 Rete Nazionale & Sezioni Ufficiali", "🌐 Visione Complessiva"],
+            horizontal=True
+        )
+
+        df_naz = pd.DataFrame(RETE_ISTITUZIONALE_CISOM)
+        presidi_db = run_query("SELECT * FROM presidi ORDER BY sezione ASC, nome_presidio ASC")
+
+        if vista_mappa == "🇮🇹 Rete Nazionale & Sezioni Ufficiali":
+            st.caption("Visualizzazione dei Raggruppamenti Regionali e Sezioni Ufficiali CISOM in Italia")
+            df_map_naz = df_naz[['lat', 'lon']].rename(columns={'lat': 'latitude', 'lon': 'longitude'})
+            st.map(df_map_naz)
+            st.dataframe(df_naz[['nome', 'tipo', 'livello']], width='stretch')
+
+        elif vista_mappa == "🔴 Presidi & Distaccamenti di Sezione (Locali)":
+            st.caption("Visualizzazione presidi, distaccamenti e basi operative censite per la Sezione")
+            if not presidi_db.empty:
+                df_map_loc = presidi_db[['latitudine', 'longitudine']].rename(columns={'latitudine': 'latitude', 'longitudine': 'longitude'})
+                st.map(df_map_loc)
+            else:
+                st.info("Nessun distaccamento locale censito a registro.")
+
+        else:
+            st.caption("Panoramica Integrata: Rete Istituzionale Nazionale + Presidi Locali di Sezione")
+            punti = []
+            for _, r in df_naz.iterrows():
+                punti.append({"latitude": r["lat"], "longitude": r["lon"]})
+            if not presidi_db.empty:
+                for _, r in presidi_db.iterrows():
+                    punti.append({"latitude": r["latitudine"], "longitude": r["longitudine"]})
+            if punti:
+                st.map(pd.DataFrame(punti))
+
         st.divider()
+        st.markdown("##### ➕ Registra Nuovo Presidio / Distaccamento di Sezione")
         with st.form("form_nuovo_presidio"):
-            col_np, col_la, col_lo = st.columns(3)
-            p_nome = col_np.text_input("Nome Presidio")
-            p_lat = col_la.number_input("Latitudine", value=42.7634, format="%.4f")
-            p_lon = col_lo.number_input("Longitudine", value=11.1118, format="%.4f")
+            col_amb, col_n = st.columns([1, 2])
+            p_sezione = col_amb.selectbox(
+                "Ambito Operativo / Sezione",
+                [
+                    "CISOM Sezione Grosseto",
+                    "Distaccamento Costiero / Follonica",
+                    "Presidio Amiata / Castell'Azzara",
+                    "Presidio Argentario",
+                    "Altro Ambito Territoriale"
+                ]
+            )
+            p_nome = col_n.text_input("Nome Presidio / Base Operativa", placeholder="es. Distaccamento Follonica, Base Logistica")
+            
+            col_la, col_lo = st.columns(2)
+            p_lat = col_la.number_input("Latitudine", value=42.7634, format="%.5f")
+            p_lon = col_lo.number_input("Longitudine", value=11.1118, format="%.5f")
             
             if st.form_submit_button("Aggiungi Presidio") and p_nome:
-                run_query("INSERT OR REPLACE INTO presidi (sezione, nome_presidio, latitudine, longitudine) VALUES ('CISOM Sezione Grosseto', ?, ?, ?)", 
-                          (p_nome, p_lat, p_lon), fetch=False)
-                st.success(f"Presidio {p_nome} inserito!")
+                run_query(
+                    "INSERT OR REPLACE INTO presidi (sezione, nome_presidio, latitudine, longitudine) VALUES (?, ?, ?, ?)", 
+                    (p_sezione, p_nome, p_lat, p_lon), 
+                    fetch=False
+                )
+                st.success(f"Presidio '{p_nome}' registrato con successo!")
                 st.rerun()
+
+        st.divider()
+        if not presidi_db.empty:
+            st.markdown("##### 📋 Elenco Basi e Presidi di Sezione Censiti")
+            for _, pr in presidi_db.iterrows():
+                cp1, cp2 = st.columns([4, 1])
+                sez_txt = f"[{pr['sezione']}] " if 'sezione' in pr and pr['sezione'] else ""
+                cp1.write(f"📍 **{sez_txt}{pr['nome_presidio']}** — Coord: `{pr['latitudine']:.4f}, {pr['longitudine']:.4f}`")
+                if cp2.button("Rimuovi Presidio", key=f"del_pres_{pr['id']}"):
+                    run_query("DELETE FROM presidi WHERE id = ?", (int(pr["id"]),), fetch=False)
+                    st.rerun()
