@@ -249,7 +249,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- ARCHITETTURA GERARCHICA SMOM / CISOM (4 MACROAREE DISTINTE) ---
+# --- ARCHITETTURA GERARCHICA SMOM / CISOM ---
 STRUTTURA_ISTITUZIONALE_SMOM_CISOM = {
     "1. Componente Sacerdotale & Assistenza Spirituale": [
         "Cardinale Patrono / Prelato dell'Ordine",
@@ -1097,7 +1097,7 @@ elif ruolo_accesso == "Configurazione & Gestione":
                 st.rerun()
 
         st.divider()
-        st.markdown("#### 🛡️ Anagrafica & Soft Delete (Storico Protetto)")
+        st.markdown("#### 🛡️ Anagrafica & Gestione Membri")
         volontari_db = run_query("SELECT * FROM volontari ORDER BY attivo DESC, nome ASC")
         
         if volontari_db.empty:
@@ -1111,16 +1111,58 @@ elif ruolo_accesso == "Configurazione & Gestione":
 
                 col_v1.write(f"👤 **{v['nome']}** — *{v['ruolo']}*{em_label} ({stato_txt})")
                 
+                # --- SOSPENSIONE / RIATTIVAZIONE PROTETTA ---
                 if v.get("attivo", 1) == 1:
                     if col_v2.button("Disattiva", key=f"dis_{v['id']}"):
                         run_query("UPDATE volontari SET attivo = 0 WHERE id = ?", (int(v["id"]),), fetch=False)
+                        if email_val and "@" in str(email_val):
+                            corpo_sosp = f"""
+                            <div style="font-family: Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 22px; border-radius: 8px; border: 1px solid #1e293b;">
+                                <h3 style="color: #f59e0b; border-bottom: 2px solid #f59e0b; padding-bottom: 6px;">CISOM — STATO PROFILO SOSPESO</h3>
+                                <p>Gentile <strong>{v['nome']}</strong>,</p>
+                                <p>La Segreteria ha impostato il tuo profilo operativo come <strong>SOSPESO / DISATTIVATO</strong>.</p>
+                                <p>Il tuo storico missioni e ore prestate resta custodito. Contatta il Direttivo per informazioni.</p>
+                            </div>
+                            """
+                            invia_email_notifica(email_val, "CISOM Grosseto: Modifica Stato Profilo", corpo_sosp)
                         st.rerun()
                 else:
                     if col_v2.button("Riattiva", key=f"riatt_{v['id']}"):
                         run_query("UPDATE volontari SET attivo = 1 WHERE id = ?", (int(v["id"]),), fetch=False)
+                        if email_val and "@" in str(email_val):
+                            corpo_riatt = f"""
+                            <div style="font-family: Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 22px; border-radius: 8px; border: 1px solid #1e293b;">
+                                <h3 style="color: #10b981; border-bottom: 2px solid #10b981; padding-bottom: 6px;">CISOM — PROFILO RIATTIVATO</h3>
+                                <p>Gentile <strong>{v['nome']}</strong>,</p>
+                                <p>Il tuo profilo operativo è stato <strong>RIATTIVATO</strong>. Puoi nuovamente dare disponibilità per le missioni.</p>
+                            </div>
+                            """
+                            invia_email_notifica(email_val, "CISOM Grosseto: Profilo Riattivato", corpo_riatt)
                         st.rerun()
                 
+                # --- CANCELLAZIONE FISICA CON NOTIFICA PREVENTIVA ---
                 if col_v3.button("Elimina Def.", key=f"del_def_{v['id']}"):
+                    email_dest = email_val
+                    nome_dest = v['nome']
+                    if email_dest and "@" in str(email_dest):
+                        corpo_canc = f"""
+                        <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b0f17; color: #e2e8f0; padding: 26px; border-radius: 8px; max-width: 580px; margin: auto; border: 1px solid #1e293b;">
+                            <div style="text-align: center; border-bottom: 2px solid #ef4444; padding-bottom: 14px; margin-bottom: 18px;">
+                                <div style="font-size: 26px; line-height: 1; color: #ef4444;">✠</div>
+                                <div style="font-size: 15px; font-weight: 800; color: #ef4444; letter-spacing: 2px; text-transform: uppercase; margin-top: 5px;">SOVRANO MILITARE ORDINE DI MALTA</div>
+                                <div style="font-size: 12px; font-weight: 600; color: #94a3b8; letter-spacing: 1px;">CORPO ITALIANO DI SOCCORSO DELL'ORDINE DI MALTA</div>
+                                <div style="font-size: 11px; font-weight: 700; color: #ef4444; margin-top: 3px;">NOTIFICA DE-REGISTRAZIONE UFFICIALE</div>
+                            </div>
+                            <p style="font-size: 14px;">Gentile <strong>{nome_dest}</strong>,</p>
+                            <p style="font-size: 13px; color: #cbd5e1;">Si notifica l'avvenuta <strong>cancellazione definitiva</strong> del tuo profilo anagrafico dal Ruolo Generale della Sezione.</p>
+                            <p style="font-size: 12px; color: #94a3b8;">Se la revoca è avvenuta per errore materiale o refuso di gestione, rispondi direttamente a questa comunicazione per consentire il ripristino immediato dei tuoi dati.</p>
+                            <div style="border-top: 1px solid #1f293d; padding-top: 12px; font-size: 11px; color: #64748b; text-align: center; margin-top: 18px;">
+                                CISOM Sezione Grosseto — Sovereign Zero Control Tower
+                            </div>
+                        </div>
+                        """
+                        invia_email_notifica(email_dest, "CISOM Grosseto: Cancellazione Registro Ruolo", corpo_canc)
+                    
                     run_query("DELETE FROM adesioni WHERE volontario_id = ?", (int(v["id"]),), fetch=False)
                     run_query("DELETE FROM volontari WHERE id = ?", (int(v["id"]),), fetch=False)
                     st.rerun()
