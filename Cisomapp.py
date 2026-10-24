@@ -1206,13 +1206,13 @@ elif ruolo_accesso == "Configurazione & Gestione":
                         st.info("Servizio eliminato e squadra notificata.")
                         st.rerun()
 
+    # --- TAB ARCHIVIO DISTRETTUALE CON CANCELLAZIONE DEI TEST ---
     with tab_archivio:
         st.markdown("#### 🗃️ Registro Storico & Archivio Distrettuale")
-        st.caption("Conserva la memoria degli eventi svolti e delle missioni annullate per cause di forza maggiore")
+        st.caption("Conserva e gestisce la memoria delle missioni svolte o annullate. Da qui puoi anche eliminare i dati di prova.")
         
         storico_servizi = run_query("""
-            SELECT titolo AS Missione, luogo AS Presidio, data AS Data_Evento, 
-                   posti_richiesti AS Target, ore_servizio AS Ore, stato AS Esito
+            SELECT id, titolo, luogo, data, posti_richiesti, ore_servizio, stato 
             FROM servizi 
             WHERE stato != 'Programmato' 
             ORDER BY data DESC
@@ -1221,12 +1221,40 @@ elif ruolo_accesso == "Configurazione & Gestione":
         if storico_servizi.empty:
             st.info("Nessuna missione archiviata a registro.")
         else:
-            df_arch_mostra = storico_servizi.copy()
-            try:
-                df_arch_mostra["Data_Evento"] = pd.to_datetime(df_arch_mostra["Data_Evento"]).dt.strftime('%d/%m/%Y')
-            except:
-                pass
-            st.dataframe(df_arch_mostra, width='stretch')
+            col_t_btn1, col_t_btn2 = st.columns([3, 1])
+            with col_t_btn2:
+                if st.button("🧹 Svuota Tutto l'Archivio Storico", key="clean_all_archive"):
+                    run_query("DELETE FROM adesioni WHERE servizio_id IN (SELECT id FROM servizi WHERE stato != 'Programmato')", fetch=False)
+                    run_query("DELETE FROM servizi WHERE stato != 'Programmato'", fetch=False)
+                    st.toast("Archivio storico completamente azzerato!")
+                    st.rerun()
+
+            st.write("")
+            for _, r_arch in storico_servizi.iterrows():
+                try:
+                    d_arch_fmt = datetime.strptime(r_arch['data'], "%Y-%m-%d").strftime("%d/%m/%Y")
+                except:
+                    d_arch_fmt = r_arch['data']
+                    
+                col_a1, col_a2, col_a3 = st.columns([3, 1, 1])
+                stato_lbl = r_arch['stato']
+                if "Concluso" in stato_lbl:
+                    badge_esito = f"🟢 **{stato_lbl}**"
+                elif "Meteo" in stato_lbl:
+                    badge_esito = f"🌧️ **{stato_lbl}**"
+                elif "Quorum" in stato_lbl:
+                    badge_esito = f"👥 **{stato_lbl}**"
+                else:
+                    badge_esito = f"⚪ **{stato_lbl}**"
+                    
+                col_a1.write(f"📁 **{r_arch['titolo']}** ({r_arch['luogo']}) — Data: `{d_arch_fmt}` | {r_arch['ore_servizio']}h")
+                col_a2.write(badge_esito)
+                
+                if col_a3.button("🗑️ Elimina Record", key=f"del_arch_{r_arch['id']}"):
+                    run_query("DELETE FROM adesioni WHERE servizio_id = ?", (int(r_arch['id']),), fetch=False)
+                    run_query("DELETE FROM servizi WHERE id = ?", (int(r_arch['id']),), fetch=False)
+                    st.toast(f"Record '{r_arch['titolo']}' rimosso definitivamente.")
+                    st.rerun()
 
     with tab_volontari:
         st.markdown("#### Registrazione Membro / Inquadramento Istituzionale")
