@@ -222,20 +222,24 @@ st.markdown("""
 }
 .year-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 12px;
     margin-top: 15px;
 }
 .month-tile {
     background: #0d1117;
     border: 1px solid #21262d;
-    border-radius: 6px;
-    padding: 12px;
-    text-align: center;
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 155px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
 }
 .month-active {
     border-color: #3b82f6;
-    background: rgba(59, 130, 246, 0.08);
+    background: rgba(59, 130, 246, 0.05);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.15);
 }
 .month-title {
     font-size: 12px;
@@ -243,15 +247,23 @@ st.markdown("""
     color: #9ca3af;
     letter-spacing: 1px;
 }
-.month-count {
-    font-size: 22px;
-    font-weight: 800;
-    margin: 6px 0;
+.event-micro-badge {
+    background-color: #161b22;
+    border-radius: 4px;
+    padding: 4px 6px;
+    margin-top: 5px;
+    font-size: 10px;
+    color: #e2e8f0;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-left: 3px solid #3b82f6;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- ARCHITETTURA GERARCHICA SMOM / CISOM (4 MACROAREE DISTINTE) ---
+# --- ARCHITETTURA GERARCHICA SMOM / CISOM ---
 STRUTTURA_ISTITUZIONALE_SMOM_CISOM = {
     "1. Componente Sacerdotale & Assistenza Spirituale": [
         "Cardinale Patrono / Prelato dell'Ordine",
@@ -500,20 +512,34 @@ ruolo_accesso = st.sidebar.radio("NAVIGAZIONE", [
 ])
 
 # ----------------------------------------------------
-# 1. RADAR ANNUALE
+# 1. RADAR ANNUALE A GRIGLIA CON PALLINI DI STATO
 # ----------------------------------------------------
 if ruolo_accesso == "Radar Annuale":
     st.subheader("🗓️ Tavola Sinottica Annuale")
-    st.caption("Pianificazione strategica globale per anno e mese")
+    st.caption("Pianificazione strategica con panoramica cromatica di copertura per ciascun mese")
+    
+    st.markdown("""
+        <div style="display:flex; gap:16px; flex-wrap:wrap; background-color:#0d1117; border:1px solid #21262d; border-radius:6px; padding:8px 12px; margin-bottom:12px; font-size:12px;">
+            <span>🟢 <b>Coperto</b> (Target Raggiunto)</span>
+            <span>🟡 <b>Parziale</b> (Mancano Volontari)</span>
+            <span>🔴 <b>Critico</b> (0 Adesioni Registrate)</span>
+            <span>🔵 <b>Bozza / Concluso</b></span>
+        </div>
+    """, unsafe_allow_html=True)
     
     anno_corrente = date.today().year
     anno_scelto = st.selectbox("Anno di riferimento", [anno_corrente, anno_corrente + 1], index=0)
     
     df_servizi_anno = run_query("""
-        SELECT id, titolo, luogo, data, posti_richiesti, stato,
-               SUBSTR(data, 6, 2) AS mese
-        FROM servizi 
-        WHERE SUBSTR(data, 1, 4) = ? AND stato NOT LIKE 'Annullato%'
+        SELECT s.id, s.titolo, s.luogo, s.data, s.posti_richiesti, s.stato,
+               SUBSTR(s.data, 6, 2) AS mese,
+               SUBSTR(s.data, 9, 2) AS giorno,
+               COUNT(a.id) AS tot_iscritti
+        FROM servizi s
+        LEFT JOIN adesioni a ON s.id = a.servizio_id AND a.stato = 'Confermato'
+        WHERE SUBSTR(s.data, 1, 4) = ? AND s.stato NOT LIKE 'Annullato%'
+        GROUP BY s.id
+        ORDER BY s.data ASC
     """, (str(anno_scelto),))
     
     mesi_nomi = ["GEN", "FEB", "MAR", "APR", "MAG", "GIU", "LUG", "AGO", "SET", "OTT", "NOV", "DIC"]
@@ -526,11 +552,44 @@ if ruolo_accesso == "Radar Annuale":
         is_active = "month-active" if tot_ev > 0 else ""
         col_c = "#3b82f6" if tot_ev > 0 else "#4b5563"
         
+        eventi_anteprima_html = ""
+        if tot_ev > 0:
+            for idx, r_ev in ev_mese.head(3).iterrows():
+                target = int(r_ev['posti_richiesti'])
+                iscr = int(r_ev['tot_iscritti'])
+                stato_s = r_ev['stato']
+                
+                if stato_s == 'Concluso':
+                    ico_led = "🔵"
+                    bordo_c = "#3b82f6"
+                elif iscr >= target:
+                    ico_led = "🟢"
+                    bordo_c = "#10b981"
+                elif iscr > 0:
+                    ico_led = "🟡"
+                    bordo_c = "#f59e0b"
+                else:
+                    ico_led = "🔴"
+                    bordo_c = "#ef4444"
+                
+                titolo_breve = r_ev['titolo'][:12] + ".." if len(r_ev['titolo']) > 12 else r_ev['titolo']
+                eventi_anteprima_html += f"""
+                    <div class="event-micro-badge" style="border-left-color: {bordo_c};">
+                        {ico_led} <b>{r_ev['giorno']}/{m_str}</b>: {titolo_breve}
+                    </div>
+                """
+            if tot_ev > 3:
+                eventi_anteprima_html += f'<div style="font-size:9px; color:#94a3b8; margin-top:4px;">+{tot_ev - 3} altri</div>'
+        else:
+            eventi_anteprima_html = '<div style="font-size:10px; color:#475569; margin-top:20px; text-align:center;">Libero</div>'
+        
         grid_html += (
             f'<div class="month-tile {is_active}">'
-            f'<div class="month-title">{mesi_nomi[i-1]}</div>'
-            f'<div class="month-count" style="color:{col_c};">{tot_ev}</div>'
-            f'<div style="font-size:10px; color:#6b7280;">{"Missioni" if tot_ev > 0 else "Nessuna"}</div>'
+            f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1f2937; padding-bottom:4px;">'
+            f'<span class="month-title">{mesi_nomi[i-1]}</span>'
+            f'<span style="font-weight:800; font-size:12px; color:{col_c};">{tot_ev}</span>'
+            f'</div>'
+            f'{eventi_anteprima_html}'
             f'</div>'
         )
     grid_html += '</div>'
@@ -547,9 +606,9 @@ if ruolo_accesso == "Radar Annuale":
         except:
             pass
         st.dataframe(
-            df_mostra[["data", "titolo", "luogo", "posti_richiesti", "stato"]].rename(columns={
+            df_mostra[["data", "titolo", "luogo", "posti_richiesti", "tot_iscritti", "stato"]].rename(columns={
                 "data": "Data", "titolo": "Missione", "luogo": "Località", 
-                "posti_richiesti": "Fabbisogno", "stato": "Stato"
+                "posti_richiesti": "Target Richiesto", "tot_iscritti": "Adesioni Attuali", "stato": "Stato"
             }),
             use_container_width=True
         )
@@ -672,10 +731,7 @@ elif ruolo_accesso == "Sinottico HUD Timeline":
                     eccedenza = c_ora - target
                     label_stato = f"{c_ora}/{target} (+{eccedenza} RIS)"
                 
-                if presenti_ora:
-                    nomi_tags = "".join([f'<div class="badge-name">{n}</div>' for n in presenti_ora])
-                else:
-                    nomi_tags = '<div style="color:#6b7280; font-size:10px; margin-top:8px;">[ VUOTO ]</div>'
+                nomi_tags = "".join([f'<div class="badge-name">{n}</div>' for n in presenti_ora]) if presenti_ora else '<div style="color:#6b7280; font-size:10px; margin-top:8px;">[ VUOTO ]</div>'
                 
                 blocchi_html += (
                     f'<div class="time-slot {css_slot}">'
@@ -686,10 +742,8 @@ elif ruolo_accesso == "Sinottico HUD Timeline":
                 )
             blocchi_html += '</div>'
             
-            banner_allerta = ""
-            if scoperti_totali > 0:
-                banner_allerta = f'<div class="alert-banner-yellow">⚠️ ATTENZIONE: Rilevati blocchi orari parziali o scoperti ({scoperti_totali} ore da integrare).</div>'
-                
+            banner_allerta = f'<div class="alert-banner-yellow">⚠️ ATTENZIONE: Rilevati blocchi orari parziali o scoperti ({scoperti_totali} ore da integrare).</div>' if scoperti_totali > 0 else ""
+            
             da_concordare = confermati[confermati["modalita"] == "Da Concordare"]
             badge_flessibili = ""
             if not da_concordare.empty:
@@ -698,14 +752,13 @@ elif ruolo_accesso == "Sinottico HUD Timeline":
                     badge_flessibili += f"• 👤 <strong>{flx['nome']}</strong> offre <strong>{flx['ore_effettive']} ore</strong> (fascia oraria libera)<br>"
                 badge_flessibili += '</div>'
             
-            # Box Dotazioni e Note sul Sinottico
             dot_extra = ""
             if serv.get("dotazioni") or serv.get("note_servizio"):
                 dot_extra = '<div style="background-color:#111827; border:1px solid #1f2937; border-radius:6px; padding:10px 14px; margin-top:10px; font-size:12px;">'
                 if serv.get("dotazioni"):
                     dot_extra += f'<div><strong>📦 Dotazioni & Mezzi:</strong> <span style="color:#93c5fd;">{serv["dotazioni"]}</span></div>'
                 if serv.get("note_servizio"):
-                    dot_extra += f'<div style="margin-top:4px;"><strong>📝 Note Caposquadra:</strong> <span style="color:#cbd5e1;">{serv["note_servizio"]}</span></div>'
+                    dot_extra += f'<div style="margin-top:4px;"><strong>📝 Disposizioni Comando:</strong> <span style="color:#cbd5e1;">{serv["note_servizio"]}</span></div>'
                 dot_extra += '</div>'
 
             st.markdown(header_card + banner_allerta + blocchi_html + badge_flessibili + dot_extra + '</div>', unsafe_allow_html=True)
@@ -763,7 +816,7 @@ elif ruolo_accesso == "Bacheca Volontario":
                     
                     if not adesioni.empty:
                         mia_ad = adesioni.iloc[0]
-                        st.success(f"✅ La tua disponibilità per questa missione è confermata a registro. Modalità: **{mia_ad['modalita']}** ({mia_ad['ore_effettive']}h)")
+                        st.success(f"✅ La tua disponibilità per questa missione è confermata a registro. Grazie. Modalità: **{mia_ad['modalita']}** ({mia_ad['ore_effettive']}h)")
                         
                         if st.button("❌ Revoca / Cancella la mia disponibilità", key=f"del_ad_{serv['id']}_{utente_id}"):
                             run_query("DELETE FROM adesioni WHERE servizio_id = ? AND volontario_id = ?", 
@@ -989,7 +1042,6 @@ elif ruolo_accesso == "Configurazione & Gestione":
             ore_calc = max(0.5, round(diff_h - (pausa_min / 60.0), 2))
             st.info(f"⏱️ Durata Netta: **{ore_calc} ore**")
             
-            # --- MODULO DOTAZIONI & MEZZI ---
             st.markdown("##### 📦 Dotazioni, Logistica e Mezzi Assegnati")
             col_d1, col_d2 = st.columns(2)
             dotazioni_scelte = col_d1.multiselect(
@@ -1033,7 +1085,6 @@ elif ruolo_accesso == "Configurazione & Gestione":
                 """
                 run_query(sql_ins, (titolo, luogo, str(d), str(t_ini), str(t_fine), posti, ore_calc, pausa_min, dot_unite, note_operative), fetch=False)
                 
-                # INVIO DISPACCIO OPERATIVO CIRCOLARE PUSH
                 if invia_circolare:
                     volontari_dest = run_query("SELECT nome, email FROM volontari WHERE attivo = 1 AND email != ''")
                     if not volontari_dest.empty:
@@ -1092,7 +1143,6 @@ elif ruolo_accesso == "Configurazione & Gestione":
                     dt_v = s_row['data']
                     
                 with st.expander(f"📅 {dt_v} — {s_row['titolo']} ({s_row['luogo']})"):
-                    # Funzione ausiliaria per notificare tutti i volontari iscritti
                     def notifica_squadra_annullamento(serv_id, titolo_ev, data_ev, motivo_testo):
                         iscritti = run_query("""
                             SELECT v.nome, v.email 
@@ -1261,7 +1311,6 @@ elif ruolo_accesso == "Configurazione & Gestione":
 
                 col_v1.write(f"👤 **{v['nome']}** — *{v['ruolo']}*{em_label} ({stato_txt})")
                 
-                # SOSPENSIONE / RIATTIVAZIONE
                 if v.get("attivo", 1) == 1:
                     if col_v2.button("Disattiva", key=f"dis_{v['id']}"):
                         run_query("UPDATE volontari SET attivo = 0 WHERE id = ?", (int(v["id"]),), fetch=False)
@@ -1290,7 +1339,6 @@ elif ruolo_accesso == "Configurazione & Gestione":
                             invia_email_notifica(email_val, "CISOM Grosseto: Profilo Riattivato", corpo_riatt)
                         st.rerun()
                 
-                # CANCELLAZIONE FISICA CON NOTIFICA
                 if col_v3.button("Elimina Def.", key=f"del_def_{v['id']}"):
                     email_dest = email_val
                     nome_dest = v['nome']
